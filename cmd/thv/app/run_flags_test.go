@@ -13,16 +13,16 @@ func TestLoadEnvFromFile(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name          string
+		name           string
 		envFileContent string
-		expectedVars  []string
-		expectError   bool
+		expectedVars   []string
+		expectError    bool
 	}{
 		{
-			name:          "empty env file",
+			name:           "empty env file",
 			envFileContent: "",
-			expectedVars:  nil,
-			expectError:   false,
+			expectedVars:   nil,
+			expectError:    false,
 		},
 		{
 			name: "basic env vars",
@@ -160,14 +160,14 @@ func TestMergeEnvVars(t *testing.T) {
 			expectError:    false,
 		},
 		{
-			name: "env file only, no command line vars",
+			name:           "env file only, no command line vars",
 			envFileContent: `FILE_VAR=file_value`,
 			cmdLineVars:    nil,
 			expectedVars:   []string{"FILE_VAR=file_value"},
 			expectError:    false,
 		},
 		{
-			name: "both file and command line vars, no overlap",
+			name:           "both file and command line vars, no overlap",
 			envFileContent: `FILE_VAR=file_value`,
 			cmdLineVars:    []string{"CMD_VAR=cmd_value"},
 			expectedVars:   []string{"FILE_VAR=file_value", "CMD_VAR=cmd_value"},
