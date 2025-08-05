@@ -58,7 +58,17 @@ ToolHive supports four ways to run an MCP server:
    Runs an MCP server using a previously exported configuration file.
 
 The container will be started with the specified transport mode and
-permission profile. Additional configuration can be provided via flags.`,
+permission profile. Additional configuration can be provided via flags.
+
+Environment Variables:
+
+Environment variables can be passed to the MCP server in two ways:
+
+   $ thv run --env KEY=VALUE server-name
+   $ thv run --env-file /path/to/.env server-name
+
+When both --env-file and --env flags are used, command-line variables
+take precedence over those defined in the .env file.`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		// If --from-config is provided, no args are required
 		if runFlags.FromConfig != "" {
