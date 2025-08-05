@@ -3,7 +3,9 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 
 	cfg "github.com/stacklok/toolhive/pkg/config"
@@ -33,6 +35,7 @@ type RunFlags struct {
 	Group             string
 	PermissionProfile string
 	Env               []string
+	EnvFile           string
 	Volumes           []string
 	Secrets           []string
 
@@ -110,6 +113,12 @@ func AddRunFlags(cmd *cobra.Command, config *RunFlags) {
 		[]string{},
 		"Environment variables to pass to the MCP server (format: KEY=VALUE)",
 	)
+	cmd.Flags().StringVar(
+		&config.EnvFile,
+		"env-file",
+		"",
+		"Path to .env file to load environment variables from",
+	)
 	cmd.Flags().StringArrayVarP(
 		&config.Volumes,
 		"volume",
@@ -171,6 +180,78 @@ func AddRunFlags(cmd *cobra.Command, config *RunFlags) {
 		"Load global ignore patterns from ~/.config/toolhive/thvignore")
 	cmd.Flags().BoolVar(&config.PrintOverlays, "print-resolved-overlays", false,
 		"Debug: show resolved container paths for tmpfs overlays")
+}
+
+// loadEnvFromFile loads environment variables from a .env file
+func loadEnvFromFile(envFile string) ([]string, error) {
+	if envFile == "" {
+		return nil, nil
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(envFile); os.IsNotExist(err) {
+		return nil, fmt.Errorf("env file not found: %s", envFile)
+	}
+
+	// Load environment variables from file
+	envMap, err := godotenv.Read(envFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read env file %s: %w", envFile, err)
+	}
+
+	// Convert map to slice of KEY=VALUE strings
+	var envVars []string
+	for key, value := range envMap {
+		envVars = append(envVars, fmt.Sprintf("%s=%s", key, value))
+	}
+
+	return envVars, nil
+}
+
+// mergeEnvVars loads environment variables from a .env file and merges them with command-line env vars
+// Command-line env vars take precedence over .env file vars
+func mergeEnvVars(envFile string, cmdLineEnvVars []string) ([]string, error) {
+	// Load env vars from file
+	fileEnvVars, err := loadEnvFromFile(envFile)
+	if err != nil {
+		return nil, err
+	}
+
+	// If no file env vars, just return command line vars
+	if len(fileEnvVars) == 0 {
+		return cmdLineEnvVars, nil
+	}
+
+	// Create a map to track which env vars are set by command line
+	cmdLineKeys := make(map[string]bool)
+	for _, envVar := range cmdLineEnvVars {
+		if key := getEnvVarKey(envVar); key != "" {
+			cmdLineKeys[key] = true
+		}
+	}
+
+	// Start with file env vars, filtering out any that are overridden by command line
+	var result []string
+	for _, envVar := range fileEnvVars {
+		if key := getEnvVarKey(envVar); key != "" && !cmdLineKeys[key] {
+			result = append(result, envVar)
+		}
+	}
+
+	// Add all command line env vars (they take precedence)
+	result = append(result, cmdLineEnvVars...)
+
+	return result, nil
+}
+
+// getEnvVarKey extracts the key from a KEY=VALUE environment variable string
+func getEnvVarKey(envVar string) string {
+	for i, char := range envVar {
+		if char == '=' {
+			return envVar[:i]
+		}
+	}
+	return ""
 }
 
 // BuildRunnerConfig creates a runner.RunConfig from the configuration
@@ -241,6 +322,12 @@ func BuildRunnerConfig(
 		}
 	}
 
+	// Merge environment variables from .env file and command line
+	mergedEnvVars, err := mergeEnvVars(runConfig.EnvFile, runConfig.Env)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process environment variables: %w", err)
+	}
+
 	// Initialize a new RunConfig with values from command-line flags
 	return runner.NewRunConfigBuilder().
 		WithRuntime(rt).
@@ -271,7 +358,7 @@ func BuildRunnerConfig(
 			LoadGlobal:    runConfig.IgnoreGlobally,
 			PrintOverlays: runConfig.PrintOverlays,
 		}).
-		Build(ctx, imageMetadata, runConfig.Env, envVarValidator)
+		Build(ctx, imageMetadata, mergedEnvVars, envVarValidator)
 }
 
 // getOidcFromFlags extracts OIDC configuration from command flags
